@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OkeGASS - Rhythm Game Mobile</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;700&display=swap');
+
+        body {
+            background: #1a0b2e;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            margin: 0;
+            user-select: none;
+            touch-action: none; /* Mencegah zoom/scroll saat main */
+        }
+
+        .game-font { font-family: 'Bungee', cursive; }
+
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+
+        /* Styling Tombol Panah di Layar (D-PAD) */
+        .mobile-controls {
+            display: grid;
+            grid-template-areas: 
+                ". up ."
+                "left . right"
+                ". down .";
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .touch-btn {
+            width: 65px;
+            height: 65px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            font-size: 1.8rem;
+            backdrop-filter: blur(5px);
+            transition: transform 0.05s;
+        }
+
+        .touch-btn:active {
+            background: #facc15;
+            color: black;
+            transform: scale(0.9);
+        }
+
+        .arrow-key {
+            width: 45px;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(30, 10, 60, 0.9);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            font-size: 1.2rem;
+            transition: all 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .arrow-active {
+            background: #facc15;
+            border-color: #fef08a;
+            transform: scale(1.15);
+            box-shadow: 0 0 20px #facc15;
+            color: black;
+        }
+
+        .arrow-success {
+            background: #22c55e;
+            border-color: #4ade80;
+            color: #fff;
+        }
+
+        .timer-container {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        #timerFill {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #facc15, #ff8800);
+        }
+
+        .judgment-pop {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3.5rem;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 20px currentColor;
+        }
+
+        @keyframes pop {
+            0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+            40% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+        }
+
+        .animate-pop { animation: pop 0.5s ease-out forwards; }
+
+        .diff-btn {
+            @apply px-6 py-3 rounded-xl game-font text-lg transition-all border-b-4 w-full;
+        }
+
+        /* Sembunyikan kontrol di desktop jika diinginkan, tapi di sini kita aktifkan untuk keduanya */
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <!-- UI Atas -->
+    <div id="topUI" class="absolute top-6 left-0 w-full flex flex-col items-center pointer-events-none hidden">
+        <h1 class="game-font text-3xl text-yellow-400">OkeGASS</h1>
+        <div id="scoreDisplay" class="text-xl font-bold tracking-widest text-white">000000</div>
+        <div id="stageInfo" class="text-[10px] font-bold text-yellow-200 mt-1 uppercase tracking-widest bg-purple-900/60 px-3 py-1 rounded-full">Stage 1</div>
+    </div>
+
+    <div id="judgment" class="game-font judgment-pop opacity-0">PERFECT</div>
+
+    <!-- Area Gameplay -->
+    <div id="gameUI" class="fixed bottom-6 left-0 w-full flex flex-col items-center hidden">
+        <div id="comboContainer" class="flex flex-col items-center opacity-0 mb-4">
+            <div id="comboCount" class="game-font text-5xl text-yellow-400">0</div>
+            <div class="game-font text-xs tracking-widest text-white">COMBO</div>
+        </div>
+
+        <div id="qteBox" class="flex flex-col w-[90%] max-w-md items-center p-4 bg-purple-950/80 backdrop-blur-md rounded-2xl border border-white/20">
+            <div class="timer-container">
+                <div id="timerFill"></div>
+            </div>
+            <div id="arrowSequence" class="flex gap-2 mb-4"></div>
+            
+            <!-- Mobile D-Pad -->
+            <div class="mobile-controls">
+                <button style="grid-area: up" class="touch-btn" ontouchstart="handleInput('ArrowUp')" onmousedown="handleInput('ArrowUp')">↑</button>
+                <button style="grid-area: left" class="touch-btn" ontouchstart="handleInput('ArrowLeft')" onmousedown="handleInput('ArrowLeft')">←</button>
+                <button style="grid-area: right" class="touch-btn" ontouchstart="handleInput('ArrowRight')" onmousedown="handleInput('ArrowRight')">→</button>
+                <button style="grid-area: down" class="touch-btn" ontouchstart="handleInput('ArrowDown')" onmousedown="handleInput('ArrowDown')">↓</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cutscene Overlay -->
+    <div id="cutsceneOverlay" class="fixed inset-0 pointer-events-none hidden items-center justify-center bg-purple-900/40 z-40">
+        <h2 id="cutsceneText" class="game-font text-5xl text-yellow-400 text-center px-4 opacity-0 transition-opacity duration-500">GASS POLLLL!</h2>
+    </div>
+
+    <!-- Menu Utama -->
+    <div id="startOverlay" class="fixed inset-0 bg-gradient-to-br from-purple-900 to-indigo-950 flex flex-col items-center justify-center z-50 p-6">
+        <div class="text-center w-full max-w-xs p-8 border-2 border-yellow-500 rounded-[2rem] bg-white/5 backdrop-blur-xl">
+            <h2 class="game-font text-5xl mb-2 text-yellow-400">OkeGASS</h2>
+            <p class="text-white text-sm mb-8 opacity-80">Siapkan jarimu untuk pesta!</p>
+            
+            <div class="flex flex-col gap-3">
+                <button onclick="initGame('easy')" class="diff-btn bg-emerald-600 border-emerald-800 text-white">EASY</button>
+                <button onclick="initGame('medium')" class="diff-btn bg-amber-600 border-amber-800 text-white">MEDIUM</button>
+                <button onclick="initGame('hard')" class="diff-btn bg-rose-600 border-rose-800 text-white">HARD</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 3D ENGINE ---
+        let scene, camera, renderer, character, stage, lights = [];
+        let audience = [], confetti = [], speakers = [], discoFloor = [];
+        let isDancing = false, danceTimer = 0, isCutscene = false, camAngle = 0;
+
+        // --- GAME CONFIG ---
+        const ARROWS = { 'ArrowUp': '↑', 'ArrowDown': '↓', 'ArrowLeft': '←', 'ArrowRight': '→' };
+        const ARROW_KEYS = Object.keys(ARROWS);
+        let score = 0, combo = 0, currentIndex = 0, currentSequence = [];
+        let isStarted = false, lastStartTime = 0, timeLeft = 100;
+        let currentStage = 1, comboGoal = 5, config = { baseArrows: 3, timeLimit: 8000 };
+
+        const arrowContainer = document.getElementById('arrowSequence');
+        const timerFill = document.getElementById('timerFill');
+        const scoreEl = document.getElementById('scoreDisplay');
+        const comboEl = document.getElementById('comboCount');
+        const comboBox = document.getElementById('comboContainer');
+        const stageInfo = document.getElementById('stageInfo');
+        const gameUI = document.getElementById('gameUI');
+
+        function init3D() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x110520);
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio > 1 ? 1.5 : 1);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+            const mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            mainLight.position.set(0, 10, 10);
+            scene.add(mainLight);
+
+            // Stage
+            const stageGeo = new THREE.CylinderGeometry(5, 5.5, 0.5, 32);
+            stage = new THREE.Mesh(stageGeo, new THREE.MeshPhongMaterial({ color: 0x220044 }));
+            stage.position.y = -0.25;
+            scene.add(stage);
+
+            // Character
+            character = createCharacter(0xfacc15);
+            scene.add(character);
+
+            // Disco Floor
+            for(let i=-2; i<=2; i++) {
+                for(let j=-2; j<=2; j++) {
+                    const p = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.8), new THREE.MeshBasicMaterial({color: 0x330066, transparent: true, opacity: 0.3}));
+                    p.rotation.x = -Math.PI/2;
+                    p.position.set(i*2, -0.45, j*2);
+                    scene.add(p);
+                    discoFloor.push(p);
+                }
+            }
+
+            createAudience();
+            resetCamera();
+            animate();
+        }
+
+        function createCharacter(color) {
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1, 0.5), new THREE.MeshPhongMaterial({color}));
+            body.position.y = 0.5;
+            group.add(body);
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshPhongMaterial({color: 0xffffff}));
+            head.position.y = 1.3;
+            group.add(head);
+            return group;
+        }
+
+        function createAudience() {
+            for(let i=0; i<20; i++) {
+                const ang = (i/20) * Math.PI * 2;
+                const dist = 7 + Math.random() * 3;
+                const npc = createCharacter(0x6644aa);
+                npc.scale.set(0.4, 0.4, 0.4);
+                npc.position.set(Math.sin(ang)*dist, 0, Math.cos(ang)*dist);
+                npc.lookAt(0,0,0);
+                scene.add(npc);
+                audience.push(npc);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = Date.now() * 0.001;
+
+            if (isCutscene) {
+                camAngle += 0.02;
+                camera.position.x = Math.sin(camAngle) * 12;
+                camera.position.z = Math.cos(camAngle) * 12;
+                camera.lookAt(0, 1, 0);
+                character.rotation.y += 0.2;
+            } else {
+                character.position.y = isDancing ? Math.abs(Math.sin(t*15))*0.5 : 0;
+            }
+
+            audience.forEach((npc, i) => {
+                npc.position.y = Math.abs(Math.sin(t * 5 + i)) * 0.3;
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        function resetCamera() {
+            camera.position.set(0, 4, 12);
+            camera.lookAt(0, 1, 0);
+        }
+
+        // --- GAME LOGIC ---
+        function generateSequence() {
+            currentSequence = [];
+            currentIndex = 0;
+            arrowContainer.innerHTML = '';
+            let count = config.baseArrows + Math.floor(currentStage / 2);
+            count = Math.min(count, 8);
+            
+            for(let i=0; i<count; i++) {
+                const k = ARROW_KEYS[Math.floor(Math.random()*4)];
+                currentSequence.push(k);
+                const d = document.createElement('div');
+                d.className = 'arrow-key';
+                d.innerText = ARROWS[k];
+                d.id = `arrow-${i}`;
+                arrowContainer.appendChild(d);
+            }
+            lastStartTime = Date.now();
+        }
+
+        function handleInput(key) {
+            if (!isStarted || isCutscene) return;
+            if (key === currentSequence[currentIndex]) {
+                const el = document.getElementById(`arrow-${currentIndex}`);
+                if(el) el.classList.add('arrow-success', 'arrow-active');
+                currentIndex++;
+                if (currentIndex === currentSequence.length) {
+                    score += 1000 + (combo * 100);
+                    combo++;
+                    showJudgment('PERFECT');
+                    isDancing = true;
+                    setTimeout(() => isDancing = false, 500);
+                    if(combo % comboGoal === 0) triggerStageUp();
+                    else generateSequence();
+                }
+            } else {
+                currentIndex = 0;
+                combo = 0;
+                document.querySelectorAll('.arrow-key').forEach(e => e.classList.remove('arrow-success'));
+                showJudgment('MISS');
+            }
+            updateUI();
+        }
+
+        function triggerStageUp() {
+            isCutscene = true;
+            document.getElementById('cutsceneOverlay').style.display = 'flex';
+            setTimeout(() => document.getElementById('cutsceneText').style.opacity = '1', 100);
+            setTimeout(() => {
+                isCutscene = false;
+                currentStage++;
+                document.getElementById('cutsceneOverlay').style.display = 'none';
+                document.getElementById('cutsceneText').style.opacity = '0';
+                resetCamera();
+                generateSequence();
+            }, 3000);
+        }
+
+        function showJudgment(txt) {
+            const el = document.getElementById('judgment');
+            el.innerText = txt;
+            el.style.color = txt === 'PERFECT' ? '#facc15' : '#ff4444';
+            el.classList.remove('animate-pop');
+            void el.offsetWidth;
+            el.classList.add('animate-pop');
+        }
+
+        function updateUI() {
+            scoreEl.innerText = score.toString().padStart(6, '0');
+            comboEl.innerText = combo;
+            comboBox.style.opacity = combo > 0 ? '1' : '0';
+            stageInfo.innerText = `Stage ${currentStage} - Target: ${comboGoal} Combo`;
+        }
+
+        function gameLoop() {
+            if (!isStarted) return;
+            if (!isCutscene) {
+                const elapsed = Date.now() - lastStartTime;
+                const limit = Math.max(2000, config.timeLimit - (currentStage * 500));
+                timeLeft = 100 - (elapsed / limit * 100);
+                
+                if (timeLeft <= 0) {
+                    combo = 0;
+                    showJudgment('TIME OUT');
+                    generateSequence();
+                }
+                timerFill.style.width = timeLeft + '%';
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        function initGame(diff) {
+            if(diff === 'easy') config = { baseArrows: 3, timeLimit: 10000 };
+            if(diff === 'medium') config = { baseArrows: 4, timeLimit: 7000 };
+            if(diff === 'hard') config = { baseArrows: 5, timeLimit: 5000 };
+
+            document.getElementById('startOverlay').style.display = 'none';
+            gameUI.classList.remove('hidden');
+            document.getElementById('topUI').classList.remove('hidden');
+            
+            isStarted = true;
+            init3D();
+            generateSequence();
+            gameLoop();
+        }
+
+        window.addEventListener('keydown', e => {
+            if(ARROWS[e.key]) {
+                e.preventDefault();
+                handleInput(e.key);
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if(camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        });
+    </script>
+</body>
+</html>
