@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OkeGASS V2 - Party Night</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;700&display=swap');
+        body { background: #050510; color: white; font-family: 'Inter', sans-serif; overflow: hidden; margin: 0; user-select: none; touch-action: none; }
+        .game-font { font-family: 'Bungee', cursive; }
+        #canvas-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        
+        #flash { position: fixed; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 100; transition: opacity 0.1s; }
+
+        /* Kontrol hanya muncul di HP */
+        #mobileControls { display: none; }
+        @media (max-width: 768px) {
+            #mobileControls { display: grid; grid-template-areas: ". up ." "left . right" ". down ."; gap: 12px; margin-top: 20px; }
+        }
+
+        .touch-btn {
+            width: 72px; height: 72px; display: flex; align-items: center; justify-content: center;
+            background: rgba(255, 255, 255, 0.15); border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px; font-size: 2rem; backdrop-filter: blur(10px); transition: all 0.1s; color: white;
+            touch-action: manipulation;
+        }
+        .touch-btn:active { background: #facc15; color: black; transform: scale(0.9); box-shadow: 0 0 25px #facc15; }
+
+        .arrow-key {
+            width: 45px; height: 45px; display: flex; align-items: center; justify-content: center;
+            background: rgba(255, 255, 255, 0.95); border: 2px solid #4f46e5;
+            border-radius: 12px; font-size: 1.4rem; color: #4338ca; font-weight: bold; transition: all 0.1s;
+        }
+        .arrow-success { 
+            background: #22c55e !important; 
+            border-color: #ffffff !important; 
+            color: white !important; 
+            transform: scale(1.2) rotate(5deg);
+        }
+
+        .timer-bar { width: 100%; height: 12px; background: rgba(255,255,255,0.1); border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.2); }
+        #timerFill { width: 100%; height: 100%; background: linear-gradient(90deg, #f87171, #ef4444); transition: width 0.1s linear; }
+
+        .judgment-pop { position: absolute; top: 22%; left: 50%; transform: translate(-50%, -50%); font-size: 4rem; pointer-events: none; z-index: 10; text-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        @keyframes pop {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            50% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+        }
+        .animate-pop { animation: pop 0.4s ease-out forwards; }
+    </style>
+</head>
+<body>
+
+    <div id="flash"></div>
+    <div id="canvas-container"></div>
+
+    <div id="topUI" class="absolute top-6 left-0 w-full flex flex-col items-center pointer-events-none hidden">
+        <div class="bg-black/40 backdrop-blur-md px-8 py-3 rounded-3xl shadow-2xl border border-white/10">
+            <h1 class="game-font text-lg text-yellow-400 text-center">NIGHT PARTY OKEGASS</h1>
+            <div id="scoreDisplay" class="text-4xl font-black text-white text-center tracking-widest">000000</div>
+        </div>
+    </div>
+
+    <div id="judgment" class="game-font judgment-pop opacity-0 text-white">PERFECT</div>
+
+    <div id="gameUI" class="fixed bottom-10 left-0 w-full flex flex-col items-center hidden">
+        <div id="comboGroup" class="opacity-0 mb-4 text-center">
+            <div id="comboCount" class="game-font text-8xl text-yellow-400 drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]">0</div>
+            <div class="text-[10px] tracking-[0.5em] font-black py-1 px-4 bg-yellow-400 rounded-full text-black uppercase">Fever Combo</div>
+        </div>
+
+        <div id="qteBox" class="w-[92%] max-w-md p-8 bg-black/60 backdrop-blur-xl rounded-[3rem] shadow-2xl border border-white/10 transition-all">
+            <div class="timer-bar"><div id="timerFill"></div></div>
+            <div id="arrowSequence" class="flex justify-center gap-3 mb-6"></div>
+            
+            <div id="mobileControls">
+                <button style="grid-area: up" class="touch-btn" onpointerdown="handleInput('ArrowUp', event)">↑</button>
+                <button style="grid-area: left" class="touch-btn" onpointerdown="handleInput('ArrowLeft', event)">←</button>
+                <button style="grid-area: right" class="touch-btn" onpointerdown="handleInput('ArrowRight', event)">→</button>
+                <button style="grid-area: down" class="touch-btn" onpointerdown="handleInput('ArrowDown', event)">↓</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="startOverlay" class="fixed inset-0 bg-[#050510] flex flex-col items-center justify-center z-50 p-6 text-center">
+        <div class="max-w-sm w-full p-12 rounded-[4rem] bg-white/5 backdrop-blur-2xl border border-white/10 shadow-2xl">
+            <div class="w-24 h-24 bg-yellow-400 rounded-full mx-auto mb-8 flex items-center justify-center shadow-[0_0_50px_rgba(250,204,21,0.3)]">
+                <span class="text-5xl">🕺</span>
+            </div>
+            <h2 class="game-font text-5xl mb-2 text-yellow-400">OKEGASS</h2>
+            <p class="text-xs mb-10 font-bold text-blue-300 uppercase tracking-[0.3em]">Disco Night Edition</p>
+            
+            <button onclick="startGame()" class="w-full py-6 bg-yellow-400 hover:bg-yellow-300 text-black game-font text-3xl rounded-3xl shadow-xl active:scale-95 transition-all">
+                GAS PARTY!
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- AUDIO ENGINE ---
+        let audioCtx;
+        let drumStep = 0;
+        
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            setInterval(playMusicLoop, 150);
+        }
+
+        function playTone(freq, type, dur, vol=0.1) {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            g.gain.setValueAtTime(vol, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + dur);
+        }
+
+        function playMusicLoop() {
+            if(!isStarted) return;
+            if(drumStep % 4 === 0) {
+                playTone(60, 'sine', 0.2, 0.4);
+                pulseSpeakers(); // Gerakkan speaker saat ada bass
+            }
+            if(drumStep % 4 === 2) playTone(200, 'triangle', 0.1, 0.1);
+            if(drumStep % 2 === 0) {
+                const notes = [261, 329, 392, 523];
+                playTone(notes[Math.floor(Math.random()*notes.length)], 'square', 0.2, 0.02);
+            }
+            drumStep++;
+        }
+
+        // --- 3D ENGINE ---
+        let scene, camera, renderer, character, stage, discoBall, speakers = [], audience = [], isStarted = false, isCutscene = false;
+        let floorTiles = [];
+
+        function init3D() {
+            scene = new THREE.Scene();
+            // Latar belakang biru gelap shading
+            scene.background = new THREE.Color(0x050515);
+            scene.fog = new THREE.FogExp2(0x050515, 0.04);
+            
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Panggung Megah
+            const stageGeo = new THREE.CylinderGeometry(7, 7.5, 1, 64);
+            const stageMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.2 });
+            stage = new THREE.Mesh(stageGeo, stageMat);
+            stage.position.y = -0.5;
+            scene.add(stage);
+
+            // Lantai Disko Dinamis
+            const tileSize = 1.2;
+            for(let x=0; x<4; x++) {
+                for(let z=0; z<4; z++) {
+                    const tMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x000000, emissiveIntensity: 1 });
+                    const tile = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1), tMat);
+                    tile.rotation.x = -Math.PI/2;
+                    tile.position.set((x-1.5)*tileSize, 0.02, (z-1.5)*tileSize);
+                    stage.add(tile);
+                    floorTiles.push(tile);
+                }
+            }
+
+            // Disco Ball
+            const discoGroup = new THREE.Group();
+            const discoGeo = new THREE.SphereGeometry(1, 16, 16);
+            const discoMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0, flatShading: true });
+            discoBall = new THREE.Mesh(discoGeo, discoMat);
+            discoGroup.add(discoBall);
+            
+            // Tali disco ball
+            const stringGeo = new THREE.CylinderGeometry(0.02, 0.02, 10);
+            const string = new THREE.Mesh(stringGeo, new THREE.MeshBasicMaterial({color: 0x888888}));
+            string.position.y = 5.5;
+            discoGroup.add(string);
+            
+            discoGroup.position.set(0, 8, 0);
+            scene.add(discoGroup);
+
+            // Sound System (Speakers)
+            const createSpeaker = (x) => {
+                const group = new THREE.Group();
+                const box = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 1), new THREE.MeshStandardMaterial({color: 0x111111}));
+                group.add(box);
+                // Lingkaran speaker
+                const circle = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.1, 32), new THREE.MeshStandardMaterial({color: 0x333333}));
+                circle.rotation.x = Math.PI/2;
+                circle.position.set(0, 0, 0.5);
+                group.add(circle);
+                group.position.set(x, 0.6, -4);
+                scene.add(group);
+                return group;
+            };
+            speakers.push(createSpeaker(-5), createSpeaker(5));
+
+            // Lighting
+            scene.add(new THREE.AmbientLight(0x101030, 1));
+            const pointLight = new THREE.PointLight(0xffffff, 2, 20);
+            pointLight.position.set(0, 8, 0);
+            scene.add(pointLight);
+
+            // Character
+            character = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1, 1.4, 0.6), new THREE.MeshStandardMaterial({color: 0xfacc15}));
+            body.position.y = 0.7; character.add(body);
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshStandardMaterial({color: 0xffffff}));
+            head.position.y = 1.8; character.add(head);
+            scene.add(character);
+
+            // Penonton
+            const colors = [0xf472b6, 0x2dd4bf, 0xfbbf24, 0x818cf8];
+            for(let i=0; i<100; i++) {
+                const npc = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1, 0.4), new THREE.MeshStandardMaterial({color: colors[i%4], transparent: true, opacity: 0.8}));
+                const angle = (i/100) * Math.PI * 2;
+                const dist = 9 + Math.random() * 6;
+                npc.position.set(Math.sin(angle)*dist, 0, Math.cos(angle)*dist);
+                npc.userData = { angle, dist };
+                scene.add(npc); audience.push(npc);
+            }
+
+            camera.position.set(0, 6, 18);
+            animate();
+        }
+
+        function pulseSpeakers() {
+            speakers.forEach(s => {
+                s.scale.set(1.1, 1.1, 1.1);
+                setTimeout(() => s.scale.set(1, 1, 1), 50);
+            });
+        }
+
+        function triggerCutscene() {
+            isCutscene = true;
+            document.getElementById('qteBox').style.opacity = '0';
+            document.getElementById('flash').style.opacity = '0.5';
+            setTimeout(() => document.getElementById('flash').style.opacity = '0', 100);
+            setTimeout(() => {
+                isCutscene = false;
+                document.getElementById('qteBox').style.opacity = '1';
+                generateSequence();
+            }, 3000);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = Date.now() * 0.001;
+
+            if(discoBall) discoBall.rotation.y += 0.05;
+
+            if(isCutscene) {
+                character.rotation.y += 0.3;
+                character.position.y = Math.abs(Math.sin(t*20)) * 1.5;
+                camera.position.x = Math.sin(t*2) * 12;
+                camera.position.z = Math.cos(t*2) * 12;
+                camera.position.y = 5 + Math.sin(t);
+            } else {
+                character.position.y = Math.abs(Math.sin(t*8)) * 0.2;
+                character.rotation.z = Math.sin(t*4) * 0.1;
+                camera.position.x = Math.sin(t*0.15) * 18;
+                camera.position.z = Math.cos(t*0.15) * 18;
+                camera.position.y = 7;
+            }
+
+            audience.forEach((npc, i) => {
+                const speed = isCutscene ? 20 : 6;
+                npc.position.y = Math.abs(Math.sin(t*speed + i)) * (isCutscene ? 1.5 : 0.4);
+                npc.lookAt(0, 0, 0);
+            });
+
+            floorTiles.forEach((tile, i) => {
+                const color = new THREE.Color();
+                color.setHSL((t*0.5 + i*0.1) % 1, 0.8, 0.5);
+                tile.material.emissive.copy(color);
+                tile.material.color.copy(color);
+                tile.material.emissiveIntensity = Math.sin(t*5 + i) > 0 ? 1.5 : 0.3;
+            });
+
+            camera.lookAt(0, 1.5, 0);
+            renderer.render(scene, camera);
+        }
+
+        // --- GAMEPLAY LOGIC ---
+        let score = 0, combo = 0, currentSequence = [], currentIndex = 0, lastTime = 0;
+        const ARROWS = { 'ArrowUp': '↑', 'ArrowDown': '↓', 'ArrowLeft': '←', 'ArrowRight': '→' };
+
+        function generateSequence() {
+            if(isCutscene) return;
+            currentSequence = [];
+            currentIndex = 0;
+            const container = document.getElementById('arrowSequence');
+            container.innerHTML = '';
+            
+            const count = Math.min(3 + Math.floor(combo/5), 8);
+            for(let i=0; i<count; i++) {
+                const keys = Object.keys(ARROWS);
+                const k = keys[Math.floor(Math.random()*4)];
+                currentSequence.push(k);
+                const d = document.createElement('div');
+                d.className = 'arrow-key';
+                d.id = `a-${i}`;
+                d.innerText = ARROWS[k];
+                container.appendChild(d);
+            }
+            lastTime = Date.now();
+        }
+
+        function handleInput(key, e) {
+            if(e) { e.preventDefault(); e.stopPropagation(); }
+            if(!isStarted || isCutscene) return;
+
+            if(key === currentSequence[currentIndex]) {
+                const arrowEl = document.getElementById(`a-${currentIndex}`);
+                if(arrowEl) arrowEl.classList.add('arrow-success');
+                playTone(400 + (currentIndex*50), 'sine', 0.1, 0.15);
+                currentIndex++;
+
+                if(currentIndex === currentSequence.length) {
+                    score += 1000 + (combo * 200);
+                    combo++;
+                    updateUI();
+                    showJudgment('MANTAP!');
+                    if(combo % 5 === 0) triggerCutscene();
+                    else setTimeout(generateSequence, 100);
+                }
+            } else {
+                combo = 0; currentIndex = 0;
+                updateUI();
+                showJudgment('SALAH!');
+                document.querySelectorAll('.arrow-key').forEach(a => a.classList.remove('arrow-success'));
+                playTone(150, 'sawtooth', 0.2, 0.1);
+            }
+        }
+
+        function showJudgment(txt) {
+            const el = document.getElementById('judgment');
+            el.innerText = txt;
+            el.style.color = (txt === 'MANTAP!') ? '#facc15' : '#ef4444';
+            el.classList.remove('animate-pop');
+            void el.offsetWidth;
+            el.classList.add('animate-pop');
+        }
+
+        function updateUI() {
+            document.getElementById('scoreDisplay').innerText = score.toString().padStart(6, '0');
+            document.getElementById('comboCount').innerText = combo;
+            document.getElementById('comboGroup').style.opacity = combo > 0 ? '1' : '0';
+        }
+
+        function gameLoop() {
+            if(!isStarted) return;
+            if(!isCutscene) {
+                const elapsed = Date.now() - lastTime;
+                const limit = 4500 - Math.min(combo * 150, 2500);
+                const prog = 100 - (elapsed / limit * 100);
+                document.getElementById('timerFill').style.width = Math.max(0, prog) + '%';
+                if(prog <= 0) { 
+                    combo = 0; updateUI(); 
+                    showJudgment('WAKTU HABIS!');
+                    generateSequence(); 
+                }
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            isStarted = true;
+            document.getElementById('startOverlay').style.display = 'none';
+            document.getElementById('gameUI').classList.remove('hidden');
+            document.getElementById('topUI').classList.remove('hidden');
+            initAudio();
+            init3D();
+            generateSequence();
+            gameLoop();
+        }
+
+        window.addEventListener('keydown', e => { 
+            if(ARROWS[e.key]) handleInput(e.key);
+        });
+    </script>
+</body>
+</html>
